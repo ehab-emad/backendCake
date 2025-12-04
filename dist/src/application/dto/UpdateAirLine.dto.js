@@ -1,0 +1,35 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.UpdateAirLineSchema = void 0;
+const zod_1 = require("zod");
+exports.UpdateAirLineSchema = zod_1.z.object({
+    companyName: zod_1.z.string().optional(),
+    phoneNumber: zod_1.z.string().optional(),
+    rating: zod_1.z.coerce.number().optional(),
+    email: zod_1.z.string().email().optional(),
+    iataCode: zod_1.z.string().length(2).optional(),
+    country: zod_1.z.string().optional(),
+    city: zod_1.z.string().optional(),
+    flightType: zod_1.z.enum(["international", "domestic"]).optional(),
+    mealsAvailable: zod_1.z.coerce.boolean().optional(),
+    specialOffers: zod_1.z.coerce.boolean().optional(),
+    collaborationStartDate: zod_1.z.preprocess((val) => (typeof val === "string" ? new Date(val) : val), zod_1.z.date().optional()),
+    contractDuration: zod_1.z.coerce.number().optional(),
+    commissionRate: zod_1.z.coerce.number().optional(),
+    status: zod_1.z.coerce.boolean().optional(),
+    airline_name: zod_1.z.string().optional(),
+    airline_type: zod_1.z.enum(["International", "Domestic", "Both"]).optional(),
+    isCharter: zod_1.z.coerce.boolean().optional(),
+    contractStartDate: zod_1.z.preprocess((val) => (typeof val === "string" ? new Date(val) : val), zod_1.z.date().optional()),
+    contractEndDate: zod_1.z.preprocess((val) => (typeof val === "string" ? new Date(val) : val), zod_1.z.date().optional()),
+    additionalServices: zod_1.z.string().optional(),
+    specialAmenities: zod_1.z.string().optional(),
+    logoUrl: zod_1.z.string().url().optional(),
+    promotionalImages: zod_1.z.preprocess((val) => (typeof val === "string" ? JSON.parse(val) : val), zod_1.z.array(zod_1.z.string()).optional()),
+    documents: zod_1.z.preprocess((val) => (typeof val === "string" ? JSON.parse(val) : val), zod_1.z.array(zod_1.z.string()).optional()),
+    newImages: zod_1.z.preprocess((val) => (typeof val === "string" ? JSON.parse(val) : val), zod_1.z.array(zod_1.z.string()).optional()),
+    imagesToRemove: zod_1.z.preprocess((val) => (typeof val === "string" ? JSON.parse(val) : val), zod_1.z.array(zod_1.z.string()).optional()),
+    featuresToRemove: zod_1.z.preprocess((val) => (typeof val === "string" ? JSON.parse(val) : val), zod_1.z.array(zod_1.z.string()).optional()),
+    newFeatures: zod_1.z.preprocess((val) => (typeof val === "string" ? JSON.parse(val) : val), zod_1.z.array(zod_1.z.string()).optional()),
+    newMeals: zod_1.z.preprocess((val) => (typeof val === "string" ? JSON.parse(val) : val), zod_1.z.array(zod_1.z.string()).optional()),
+});

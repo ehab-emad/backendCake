@@ -1,0 +1,225 @@
+import { injectable, inject } from "inversify";
+import { v4 as uuid } from "uuid";
+import { IReservationRepository } from "../../core/interfaces/repositories/IReservationRepository";
+import { IPaymentRepository } from "../../core/interfaces/repositories/IPaymentRepository";
+import { Reservation } from "../../core/entities/Reservation";
+import { Payment } from "../../core/entities/Payment";
+import { MimoService } from './mimoService';
+import { CustomerService } from "./CustomerService";
+import { NotificationService } from "./NotificationService";
+import { PaymentGateway, PaymentStatus } from "../../core/types/payment.types";
+import { TYPES } from "../../shared/di/types";
+import { CreateMamoLinkDTO } from '../dto/mimoOrder.dto';
+
+interface ProcessPaymentResult {
+  success: boolean;
+  paymentId: string;
+  status: PaymentStatus;
+  gateway: PaymentGateway;
+  amount?: number;
+  currency?: string;
+  redirectUrl?: string;
+  error?: string;
+}
+
+@injectable()
+export class ReservationPaymentService {
+  constructor(
+    @inject(TYPES.ReservationRepository)
+    private readonly reservationRepo: IReservationRepository,
+    @inject(TYPES.PaymentRepository)
+    private readonly paymentRepo: IPaymentRepository,
+    @inject(TYPES.MimoService)
+    private readonly mimoService: MimoService,
+    @inject(TYPES.CustomerService)
+    private readonly customerService: CustomerService,
+    @inject(TYPES.NotificationService)
+    private readonly notificationService: NotificationService
+  ) {}
+
+  public async processPayment(
+    reservationId: string,
+    gateway: PaymentGateway,
+    paymentDetails: {
+      amount: number;
+      currency?: string;
+      description?: string;
+      customerEmail: string;
+      metadata?: Record<string, any>;
+    }
+  ): Promise<ProcessPaymentResult> {
+    try {
+      const reservation = await this.reservationRepo.findById(reservationId);
+      if (!reservation) {
+        throw new Error('Reservation not found');
+      }
+
+      if (reservation.status !== 'pending') {
+        throw new Error(`Cannot process payment for reservation with status: ${reservation.status}`);
+      }
+
+      let result: ProcessPaymentResult;
+      
+      // Route to the appropriate payment gateway
+      switch (gateway) {
+        case 'stripe':
+          result = await this.processStripePayment(reservation, paymentDetails);
+          break;
+        case 'tamara':
+          result = await this.processTamaraPayment(reservation, paymentDetails);
+          break;
+        case 'mimo':
+          result = await this.processMimoPayment(reservation, paymentDetails);
+          break;
+        default:
+          throw new Error(`Unsupported payment gateway: ${gateway}`);
+      }
+      // Update reservation status based on payment result
+      if (result.success && result.status === 'paid') {
+        reservation.confirmPayment(
+          result.paymentId,
+          gateway,
+          eventData.currency?.toUpperCase() || 'USD'
+        );
+      } else if (result.status === 'failed') {
+        reservation.markAsFailed();
+      }
+
+      // Save the updated reservation
+      await this.reservationRepo.update(reservation);
+{{ ... }}
+      };
+
+      // Create payment link using MimoService
+      const mimoResponse = await this.mimoService.createPaymentLink(mimoPaymentData);
+      
+      // Extract payment intent or checkout session data
+      const paymentUrl = mimoResponse?.data?.url || mimoResponse?.url;
+      
+      if (!paymentUrl) {
+        throw new Error('No payment URL returned from Mimo');
+      }
+{{ ... }}
+      throw error;
+    }
+  }
+
+  private async handleStripeWebhook(payload: any): Promise<void> {
+    try {
+      console.log('🔄 Processing Stripe webhook:', JSON.stringify(payload, null, 2));
+
+      const eventType = payload.type;
+      const eventData = payload.data.object;
+      const paymentIntentId = eventData?.payment_intent;
+      const reservationId = eventData?.metadata?.reservationId;
+
+        console.warn('⚠️ Missing paymentIntentId or reservationId in Stripe webhook');
+        return;
+        return;
+      }
+
+      const reservation = await this.reservationRepo.findById(reservationId);
+      const reservation = await this.reservationRepo.findById(reservationId);
+      if (!reservation) {
+        return;
+        return;
+      }
+
+      const payments = await this.paymentRepo.findByReservationId(reservationId);
+      const payment = payments.find(p => p.id === paymentIntentId);
+
+        return;
+        console.warn(`⚠️ Payment not found for reservation ${reservationId} and payment ${paymentIntentId}`);
+        return;
+      }
+
+      switch (eventType) {
+        case 'payment_intent.succeeded':
+          // Payment successful - confirm the reservation
+          reservation.confirmPayment(
+            paymentIntentId,
+            'stripe',
+            eventData.amount,
+            eventData.currency?.toUpperCase() || 'USD'
+          );
+          await this.paymentRepo.update(payment);
+          await this.paymentRepo.update(payment);
+
+          const customer = await this.customerService.findById(reservation.customerId!);
+          if (customer?.authUserId) {
+            await this.notificationService.sendReservationNotification(
+              'Payment Confirmed',
+              `Your payment for reservation ${reservation.reservationNumber} has been confirmed.`,
+              { reservationId: reservation.id, status: 'confirmed' }
+            );
+          }
+          break;
+
+        case 'payment_intent.failed':
+          reservation.markAsFailed();
+          payment.transactionStatus = 'cancelled';
+          await this.paymentRepo.update(payment);
+          await this.paymentRepo.update(payment);
+
+          const customerFailed = await this.customerService.findById(reservation.customerId!);
+          if (customerFailed?.authUserId) {
+            await this.notificationService.sendReservationNotification(
+              'Payment Failed',
+              `Your payment for reservation ${reservation.reservationNumber} has failed. Please try again.`,
+              { reservationId: reservation.id, status: 'failed' }
+            );
+          }
+          break;
+
+        case 'payment_intent.processing':
+          // Payment still processing - update status but don't change reservation status
+          payment.transactionStatus = 'under_review';
+          await this.paymentRepo.update(payment);
+          console.log(`⏳ Payment ${paymentIntentId} is still processing for reservation ${reservationId}`);
+          break;
+
+        default:
+          console.warn(`⚠️ Unknown payment status from Stripe webhook: ${eventType}`);
+          break;
+      }
+
+      await this.reservationRepo.update(reservation);
+      await this.reservationRepo.update(reservation);
+
+    } catch (error) {
+      throw error;
+      throw error;
+    }
+  }
+
+  public async cancelReservation(reservationId: string): Promise<Reservation> {
+{{ ... }}
+    if (!reservation) {
+      throw new Error('Reservation not found');
+    }
+
+    if (reservation.status === 'cancelled') {
+      return reservation; // Already canceled
+    }
+
+    // Process refund if payment was made
+    if (reservation.paymentStatus === 'paid' && reservation.paymentId) {
+      // In a real implementation, this would call the appropriate gateway's refund API
+      console.log(`Processing refund for payment ${reservation.paymentId}`);
+      // Update payment status to cancelled (since we don't have updateStatus method)
+      const payment = await this.paymentRepo.findById(reservation.paymentId);
+      if (payment) {
+        payment.transactionStatus = 'cancelled';
+        await this.paymentRepo.update(payment);
+      }
+    }
+
+    // Update reservation status
+    reservation.cancel();
+    await this.reservationRepo.update(reservation);
+
+    return reservation;
+  }
+}
+
+export default ReservationPaymentService;

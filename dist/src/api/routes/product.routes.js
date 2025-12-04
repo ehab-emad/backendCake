@@ -1,0 +1,55 @@
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ProductRoutes = void 0;
+const inversify_1 = require("inversify");
+const express_1 = require("express");
+const ProductController_1 = require("../controllers/ProductController");
+const types_1 = require("../../shared/di/types");
+const validation_middleware_1 = require("../middleware/validation.middleware");
+const CreateProduct_dto_1 = require("../../application/dto/CreateProduct.dto");
+const UpdateProduct_dto_1 = require("../../application/dto/UpdateProduct.dto");
+const FilterProduct_dto_1 = require("../../application/dto/FilterProduct.dto");
+const AuthMiddleware_1 = require("../middleware/AuthMiddleware");
+const multer_1 = __importDefault(require("multer"));
+let ProductRoutes = class ProductRoutes {
+    constructor(productController) {
+        this.productController = productController;
+        this.router = (0, express_1.Router)();
+        this.setupRoutes();
+    }
+    setupRoutes() {
+        this.router.get("/", 
+        // authenticateJWT,
+        (0, validation_middleware_1.validationMiddleware)(FilterProduct_dto_1.FilterProductSchema, "query"), (req, res, next) => this.productController.listProducts(req, res, next).catch(next));
+        this.router.post("/", AuthMiddleware_1.authenticateJWT, (0, multer_1.default)().none(), // Middleware to parse form-data (text fields only)
+        (0, validation_middleware_1.validationMiddleware)(CreateProduct_dto_1.CreateProductSchema, "body"), (req, res, next) => this.productController.createProduct(req, res, next).catch(next));
+        this.router.get("/:id", 
+        // authenticateJWT,
+        (req, res, next) => this.productController.getProduct(req, res, next).catch(next));
+        this.router.put("/:id", AuthMiddleware_1.authenticateJWT, (0, validation_middleware_1.validationMiddleware)(UpdateProduct_dto_1.UpdateProductSchema, "body"), (req, res, next) => this.productController.updateProduct(req, res, next).catch(next));
+        this.router.delete("/:id", AuthMiddleware_1.authenticateJWT, (req, res, next) => this.productController.deleteProduct(req, res, next).catch(next));
+        this.router.post("/:id/ratings", AuthMiddleware_1.authenticateJWT, (req, res, next) => this.productController.addRating(req, res, next).catch(next));
+        this.router.delete("/:productId/images/:imageId", AuthMiddleware_1.authenticateJWT, (req, res, next) => this.productController.removeImage(req, res, next).catch(next));
+    }
+};
+exports.ProductRoutes = ProductRoutes;
+exports.ProductRoutes = ProductRoutes = __decorate([
+    (0, inversify_1.injectable)(),
+    __param(0, (0, inversify_1.inject)(types_1.TYPES.ProductController)),
+    __metadata("design:paramtypes", [ProductController_1.ProductController])
+], ProductRoutes);

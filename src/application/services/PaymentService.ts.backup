@@ -1,0 +1,346 @@
+import { injectable, inject } from "inversify";
+import Stripe from "stripe";
+import axios from "axios";
+import { v4 as uuid } from "uuid";
+import { IAppConfig } from "../../core/config/IAppConfig";
+import { IPaymentRepository } from "../../core/interfaces/repositories/IPaymentRepository";
+import { IReservationRepository } from "../../core/interfaces/repositories/IReservationRepository";
+import { IReservationService } from "../../core/interfaces/services/IReservationService";
+import { Payment } from "../../core/entities/Payment";
+
+import {
+  CreatePaymentDTO,
+  CreatePaymentSchema,
+} from "../dto/CreatePayment.dto";
+import {
+  UpdatePaymentDTO,
+  UpdatePaymentSchema,
+} from "../dto/UpdatePayment.dto";
+import {
+  FilterPaymentDTO,
+  FilterPaymentSchema,
+} from "../dto/FilterPayment.dto";
+import {
+  CreateStripeSessionDTO,
+  CreateStripeSessionSchema,
+} from "../dto/StripeSession.dto";
+
+import {
+  CreateMamoPaymentDTO,
+  CreateMamoPaymentSchema,
+} from "../dto/CreateMamoPayment.dto";
+
+import {
+  InitiatePaymentDTO,
+  InitiatePaymentSchema,
+} from "../dto/InitiatePayment.dto";
+
+import { TYPES } from "../../shared/di/types";
+
+@injectable()
+export class PaymentService {
+  private stripe: Stripe;
+
+  private tamaraBaseUrl: string;
+  private mamoBaseUrl: string;
+
+  constructor(
+    @inject(TYPES.Config) private cfg: IAppConfig,
+    @inject(TYPES.PaymentRepository)
+    private readonly repo: IPaymentRepository,
+    @inject(TYPES.ReservationRepository)
+    private readonly reservationRepo: IReservationRepository
+  ) {
+    this.stripe = new Stripe(cfg.STRIPE_SECRET_KEY);
+
+    this.tamaraBaseUrl = cfg.TAMARA_BASE_URL;
+    this.mamoBaseUrl = cfg.MAMO_BASE_URL;
+  }
+
+  public async createPayment(dto: CreatePaymentDTO): Promise<Payment> {
+    const valid = CreatePaymentSchema.parse(dto);
+    const id = uuid();
+    const procNum = `PROC-${Date.now()}`;
+    const p = new Payment(
+      id,
+      procNum,
+      valid.reservationId ?? null,
+      valid.customerId ?? null,
+      valid.clientId ?? null,
+      valid.category,
+      valid.transactionStatus,
+      valid.amount
+    );
+    await this.repo.create(p);
+    return p;
+  }
+
+  public async listPayments(filters: FilterPaymentDTO) {
+    const f = FilterPaymentSchema.parse(filters);
+    const [data, total] = await this.repo.findAndCount(f);
+    return {
+      data,
+      total,
+      page: f.page ?? 1,
+      limit: f.limit ?? 20,
+    };
+  }
+
+  public async getPayment(id: string): Promise<Payment> {
+    const p = await this.repo.findById(id);
+    if (!p) throw new Error("Payment not found");
+    return p;
+  }
+
+  public async updatePayment(
+    id: string,
+    dto: UpdatePaymentDTO
+  ): Promise<Payment> {
+    const valid = UpdatePaymentSchema.parse(dto);
+    const existing = await this.repo.findById(id);
+    if (!existing) throw new Error("Payment not found");
+    Object.assign(existing, valid);
+    await this.repo.update(existing);
+    return existing;
+  }
+
+  public async deletePayment(id: string): Promise<void> {
+    await this.repo.delete(id);
+  }
+
+  public async createStripeSession(
+    dto: CreateStripeSessionDTO
+  ): Promise<{ sessionUrl: string }> {
+    const valid = CreateStripeSessionSchema.parse(dto);
+
+    const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = {
+      price_data: {
+        currency: valid.currency,
+        product_data: { name: "Travel purchase" },
+        unit_amount: Math.round(valid.amount * 100),
+      },
+      quantity: 1,
+    };
+
+    const params: Stripe.Checkout.SessionCreateParams = {
+      payment_method_types: ["card"],
+      line_items: [lineItem],
+      mode: "payment",
+      success_url: valid.successUrl,
+      cancel_url: valid.cancelUrl,
+    };
+
+    if (valid.agencyAccountId) {
+      params.payment_intent_data = {
+        application_fee_amount: valid.commissionAmount
+          ? Math.round(valid.commissionAmount * 100)
+          : undefined,
+        transfer_data: { destination: valid.agencyAccountId },
+      };
+    }
+
+    const session = await this.stripe.checkout.sessions.create(params);
+    return { sessionUrl: session.url! };
+  }
+
+  public async createMamoPayment(
+    dto: CreateMamoPaymentDTO
+  ): Promise<{ checkoutUrl: string }> {
+    const valid = CreateMamoPaymentSchema.parse(dto);
+    const url = `${this.mamoBaseUrl}/payment_links`;
+
+    const payload = {
+      amount: valid.amount,
+      currency: valid.currency,
+      title: valid.title,
+      description: valid.description,
+      callback_url: valid.callbackUrl,
+      redirect_url: valid.redirectUrl,
+      metadata: valid.metadata,
+    };
+
+    const resp = await axios.post(url, payload, {
+        Authorization: `Bearer ${this.cfg.MAMO_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    return { checkoutUrl: resp.data.data.payment_url };
+  }
+
+  public async initiatePayment(
+    dto: InitiatePaymentDTO
+  ): Promise<{ paymentId: string; redirectUrl: string; status: string }> {
+    const valid = InitiatePaymentSchema.parse(dto);
+
+    // Get reservation details to calculate amount and get customer info
+    const reservation = await this.reservationRepo.findById(valid.reservationId);
+    if (!reservation) {
+      throw new Error("Reservation not found");
+    }
+
+    // Calculate total amount from reservation price and extras
+    const totalAmount = reservation.price || 0;
+
+    // Create payment record
+    const paymentId = uuid();
+    const processNumber = `PAY-${Date.now()}`;
+
+    const payment = new Payment(
+      paymentId,
+      processNumber,
+      valid.reservationId,
+      reservation.customerId,
+      reservation.clientId,
+      "reservation",
+      "pending",
+      totalAmount
+    );
+
+    await this.repo.create(payment);
+
+    // Create payment session based on gateway
+    let redirectUrl = "";
+    switch (valid.gateway) {
+      case "stripe":
+        const stripeSession = await this.createStripeSessionForPayment(
+          totalAmount,
+          reservation,
+          valid
+        );
+        redirectUrl = stripeSession.sessionUrl;
+        break;
+      case "tamara":
+        const tamaraSession = await this.createTamaraSessionForPayment(
+          totalAmount,
+          reservation,
+          valid
+        );
+        redirectUrl = tamaraSession.redirectUrl;
+        break;
+      case "mimo":
+        const mimoSession = await this.createMimoSessionForPayment(
+          totalAmount,
+          reservation,
+          valid
+        );
+        redirectUrl = mimoSession.redirectUrl;
+        break;
+      default:
+        throw new Error(`Unsupported payment gateway: ${valid.gateway}`);
+    }
+
+    return {
+      paymentId,
+      redirectUrl,
+      status: "pending"
+    };
+  }
+
+  private async createStripeSessionForPayment(
+    amount: number,
+    reservation: any,
+    dto: InitiatePaymentDTO
+  ): Promise<{ sessionUrl: string }> {
+    const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = {
+      price_data: {
+        currency: "USD",
+        product_data: { name: "Travel Reservation" },
+        unit_amount: Math.round(amount * 100),
+      },
+      quantity: 1,
+    };
+
+    const params: Stripe.Checkout.SessionCreateParams = {
+      payment_method_types: ["card"],
+      line_items: [lineItem],
+      mode: "payment",
+      success_url: dto.successUrl || `${this.cfg.FRONTEND_URL}/payment/success`,
+      cancel_url: dto.cancelUrl || `${this.cfg.FRONTEND_URL}/payment/cancel`,
+      metadata: {
+        paymentId: reservation.id,
+        reservationId: reservation.id,
+      },
+    };
+
+    const session = await this.stripe.checkout.sessions.create(params);
+    return { sessionUrl: session.url! };
+  }
+
+  private async createTamaraSessionForPayment(
+    amount: number,
+    reservation: any,
+    dto: InitiatePaymentDTO
+  ): Promise<{ redirectUrl: string }> {
+    const url = `${this.tamaraBaseUrl}/orders`;
+
+    const payload = {
+      total_amount: {
+        amount: amount.toString(),
+        currency: "SAR"
+      },
+      description: "Travel Reservation Payment",
+      customer_info: {
+        first_name: reservation.name || "Customer",
+        last_name: "",
+        email: reservation.email || "customer@example.com",
+        phone_number: reservation.phoneNumber || ""
+      },
+      items: [
+        {
+          name: "Travel Reservation",
+          quantity: 1,
+          total_amount: {
+            amount: amount.toString(),
+            currency: "SAR"
+          }
+        }
+      ],
+      success_url: dto.successUrl || `${this.cfg.FRONTEND_URL}/payment/success`,
+      failure_url: dto.cancelUrl || `${this.cfg.FRONTEND_URL}/payment/cancel`,
+      metadata: {
+        paymentId: reservation.id,
+        reservationId: reservation.id,
+      }
+    };
+
+    const resp = await axios.post(url, payload, {
+      headers: {
+        Authorization: `Bearer ${this.cfg.TAMARA_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    return { redirectUrl: resp.data.redirect_url };
+  }
+
+  private async createMimoSessionForPayment(
+    amount: number,
+    reservation: any,
+    dto: InitiatePaymentDTO
+  ): Promise<{ redirectUrl: string }> {
+    const url = `${this.mamoBaseUrl}/payment_links`;
+
+    const payload = {
+      amount: amount,
+      currency: "SAR",
+      title: "Travel Reservation Payment",
+      description: "Payment for travel reservation",
+      callback_url: `${this.cfg.BACKEND_URL}/api/payments/webhooks/mimo`,
+      redirect_url: dto.successUrl || `${this.cfg.FRONTEND_URL}/payment/success`,
+      metadata: {
+        paymentId: reservation.id,
+        reservationId: reservation.id,
+      },
+    };
+
+    const resp = await axios.post(url, payload, {
+      headers: {
+        Authorization: `Bearer ${this.cfg.MAMO_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    return { redirectUrl: resp.data.data.payment_url };
+  }
+}

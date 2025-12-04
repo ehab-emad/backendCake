@@ -1,0 +1,25 @@
+node_modules
+npm-debug.log
+yarn-error.log
+
+dist
+
+.env
+.env.local
+.env.*.local
+.env.docker
+.env.production
+# تجاهل كل حاجة جوه docker ما عدا app.Dockerfile
+docker/*
+!docker/app.Dockerfile
+!docker/dev.Dockerfile
+
+Dockerfile*
+docker-compose*.yml
+
+logs
+*.log
+
+.git
+.gitignore
+.dockerignore
