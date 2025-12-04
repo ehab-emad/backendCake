@@ -1,6 +1,5 @@
 import { injectable, inject } from "inversify";
 import { SummaryFilterDTO } from "../dto/SummaryFilter.dto";
-// import { ITripRepository } from "../../core/interfaces/repositories/ITripRepository";
 import { IReservationRepository } from "../../core/interfaces/repositories/IReservationRepository";
 import { IPaymentRepository } from "../../core/interfaces/repositories/IPaymentRepository";
 import { TYPES } from "../../shared/di/types";
@@ -13,7 +12,6 @@ import {
 } from "date-fns";
 
 export interface Summary {
-  // numTrips: number;
   activeReservations: number;
   totalRevenue: number;
 }
@@ -21,7 +19,6 @@ export interface Summary {
 @injectable()
 export class SummaryService {
   constructor(
-    // @inject(TYPES.TripRepository) private trips: ITripRepository,
     @inject(TYPES.ReservationRepository)
     private reservations: IReservationRepository,
     @inject(TYPES.PaymentRepository) private payments: IPaymentRepository
@@ -55,7 +52,6 @@ export class SummaryService {
         start = startOfMonth(now);
     }
 
-    // const numTrips = await this.trips.countCreatedBetween(start, end);
     const activeReservations = await this.reservations.countByStatusesBetween(
       ["pending", "confirmed"],
       start,

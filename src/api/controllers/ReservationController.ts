@@ -98,12 +98,8 @@ export class ReservationController {
         let flight = null;
         let trip = null;
         
-        if (dto.serviceType === 'room' && dto.serviceId) {
-         throw new Error('Room service is not supported');
-        } else if (dto.serviceType === 'flight' && dto.serviceId) {
+        if (dto.serviceType === 'flight' && dto.serviceId) {
           throw new Error('Flight service is not supported');
-        } else if (dto.serviceType === 'trip' && dto.serviceId) {
-          throw new Error('Trip service is not supported');
         }
 
         const category = determineCategory({});

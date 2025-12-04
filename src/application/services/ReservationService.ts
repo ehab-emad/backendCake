@@ -15,9 +15,7 @@ import { ReservationStatus } from '../../core/entities/Reservation';
 
 import { ClientService } from "./ClientService";
 import { CustomerService } from "./CustomerService";
-// import { RoomService } from "./RoomService";
 // import { FlightService } from "./FlightService";
-// import { TripService } from "./TripService";
 import { NotificationService } from "./NotificationService";
 import { PaymentService } from "./PaymentService";
 import { ReservationPaymentService } from "./ReservationPaymentService";
@@ -45,15 +43,8 @@ export class ReservationService implements IReservationService {
     @inject(TYPES.CustomerService)
     private readonly customerService: CustomerService,
 
-    // @inject(TYPES.RoomService)
-    // private readonly roomService: RoomService,
-
     // @inject(TYPES.FlightService)
     // private readonly flightService: FlightService,
-
-    // @inject(TYPES.TripService)
-    // private readonly tripService: TripService,
-
     @inject(TYPES.NotificationService)
     private readonly notificationService: NotificationService
   ) {}
@@ -302,9 +293,7 @@ export class ReservationService implements IReservationService {
           ...reservationWithoutSeats,
           client,
           customer,
-          room: null, // Room service is not supported
           flight: null, // Flight service is not supported
-          trip: null, // Trip service is not supported
         };
       })
     );
@@ -493,18 +482,10 @@ export class ReservationService implements IReservationService {
       }
 
       // Calculate base amount based on service type
-      if (dto.serviceType === 'room' && dto.serviceId) {
-        // Room service is not supported
-        throw new Error('Room service is not supported');
-      } 
-      else if (dto.serviceType === 'flight' && dto.serviceId) {
+      if (dto.serviceType === 'flight' && dto.serviceId) {
         // Flight service is not supported
         throw new Error('Flight service is not supported');
       } 
-      else if (dto.serviceType === 'trip' && dto.serviceId) {
-        // Trip service is not supported
-        throw new Error('Trip service is not supported');
-      }
       
       // No other service types are supported, so baseAmount remains 0 unless other logic is added.
       
