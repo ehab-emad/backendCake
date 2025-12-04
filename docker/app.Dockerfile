@@ -2,18 +2,16 @@ FROM node:20.2-alpine AS builder
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm install --omit=dev --legacy-peer-deps
+
 COPY . .
 
 COPY tsconfig.json ./
 COPY ./src ./src
 
 COPY scripts ./scripts
-RUN npm install --no-save --save-dev \
-      typescript \
-      @types/node \
-      @types/uuid && \
-    npx tsc
+RUN npm install --no-save --save-dev typescript @types/node @types/uuid --legacy-peer-deps && npx tsc
+
 
 FROM node:20.2-alpine AS runner
 WORKDIR /usr/src/app
